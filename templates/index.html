@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Моделирование последствий выброса химически опасных веществ</title>
+    <link rel="stylesheet" href="../static/style.css">
+</head>
+
+<body>
+    <h1>Моделирование последствий выброса химически опасных веществ на промышленном объекте</h1>
+    <div id="messages"></div>
+    <div class="tables-container">
+        <!-- Таблица параметров X1-X11 -->
+        <div class="table-wrapper">
+            <h3 class="table-title">Параметры системы</h3>
+            <div class="scrollable-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Параметр</th>
+                            <th>Название</th>
+                            <th>Начальное</th>
+                            <th>Минимальное</th>
+                            <th>Максимальное</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for i in range(1, 12) %}
+                        <tr>
+                            <td>X{{ i }}</td>
+                            <td>
+                                {% if i == 1 %}Время испарения химически опасных веществ в районе аварии с поверхности земли
+                                {% elif i == 2 %}Время ликвидации последствий аварии на химически опасном объекте
+                                {% elif i == 3 %}Площадь заражения
+                                {% elif i == 4 %}Время подхода первичного и/или вторичного облака к населенным пунктам
+                                {% elif i == 5 %}Количество пораженных от первичного облака, чел.
+                                {% elif i == 6 %}Количество пораженных от вторичного облака, чел.
+                                {% elif i == 7 %}Количество госпитализированных, чел.
+                                {% elif i == 8 %}Количество пораженной техники, ед.
+                                {% elif i == 9 %}Количество растворов для обеззараживания местности
+                                {% elif i == 10 %}Количество сил и средств, необходимых для проведения аварийно-спасательных работ
+                                {% elif i == 11 %}Эффективность системы оповещения, %
+                                {% endif %}
+                            </td>
+                            <td><input type="number" min="0" step="0.01" id="X{{ i }}" placeholder="0.0"
+                                    value="{{ parameters.get('X' ~ i, '') }}"></td>
+                            <td><input type="number" min="0" step="0.01" id="X{{ i }}_min" placeholder="0.0"
+                                    value="{{ parameters.get('X' ~ i ~ '_min', '') }}"></td>
+                            <td><input type="number" min="0" step="0.01" id="X{{ i }}_max" placeholder="1.0"
+                                    value="{{ parameters.get('X' ~ i ~ '_max', '') }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Таблица факторов F1-F7 -->
+        <div class="table-wrapper">
+            <h3 class="table-title">Факторы внешней среды</h3>
+            <div class="scrollable-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Фактор</th>
+                            <th>Название</th>
+                            <th>Значение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set factors = [
+                        ('F1', 'F1', 'Общее количество выброшенных при аварии химически опасных веществ на объекте'),
+                        ('F2', 'F2', 'Количество персонала на химически опасном объекте'),
+                        ('F3', 'F3', 'Скорость ветра, м/с'),
+                        ('F4', 'F4', 'Температура воздуха, °C'),
+                        ('F5', 'F5', 'Время до начала оповещения, ч'),
+                        ('F6', 'F6', 'Численность населения'),
+                        ('F7', 'F7', 'Количество убежищ')
+                        ] %}
+
+                        {% for factor_name, factor_symbol, description in factors %}
+                        <tr>
+                            <td>{{ factor_symbol }}</td>
+                            <td>{{ description }}</td>
+                            <td><input type="number" min="0" step="0.01" id="{{ factor_name }}" placeholder="0.0"
+                                    value="{{ parameters.get(factor_name, '') }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="buttons-container">
+        <a href="{{ url_for('main') }}" class="home-button">На главную</a>
+        <button id="clearBtn">Очистить значения</button>
+        <button id="randomBtn">Случайные значения</button>
+        <button id="plotBtn">Построить диаграммы</button>
+    </div>
+
+    <div id="diagramsContainer" class="diagrams-container" style="display: none;">
+        <h2>Результаты моделирования</h2>
+        <div class="diagram">
+            <h3>График изменения параметров по времени (общий)</h3>
+            <img id="timeSeriesImg" src="" alt="График изменения параметров по времени">
+        </div>
+        <div class="diagram">
+            <h3>График изменения параметров по времени (детальный)</h3>
+            <img id="timeSeriesDetailedImg" src="" alt="Детальный график изменения параметров по времени">
+        </div>
+        <div class="diagram">
+            <h3>Лепестковые диаграммы</h3>
+            <img id="radarChartsImg" src="" alt="Лепестковые диаграммы">
+        </div>
+    </div>
+
+    <script>
+        // Функция для отображения сообщений
+        function showMessage(message, type) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
+            messageDiv.textContent = message;
+            messagesDiv.appendChild(messageDiv);
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 1500);
+        }
+
+        // Функция для получения всех значений из формы
+        function getFormData() {
+            const inputs = document.querySelectorAll('input');
+            const data = {};
+            inputs.forEach(input => {
+                data[input.id] = input.value;
+            });
+            return data;
+        }
+
+        // Функция для проверки значений параметров X1-X11
+        function validateParameterValues() {
+            let isValid = true;
+
+            for (let i = 1; i <= 11; i++) {
+                const initialInput = document.getElementById(`X${i}`);
+                const minInput = document.getElementById(`X${i}_min`);
+                const maxInput = document.getElementById(`X${i}_max`);
+
+                if (initialInput && minInput && maxInput && 
+                    initialInput.value && minInput.value && maxInput.value) {
+                    const initialValue = parseFloat(initialInput.value);
+                    const minValue = parseFloat(minInput.value);
+                    const maxValue = parseFloat(maxInput.value);
+
+                    if (initialValue < minValue || initialValue > maxValue || minValue > maxValue) {
+                        initialInput.style.borderColor = '#e74c3c';
+                        minInput.style.borderColor = '#e74c3c';
+                        maxInput.style.borderColor = '#e74c3c';
+                        isValid = false;
+
+                        if (isValid === false) {
+                            showMessage(`Ошибка: Начальное значение X${i} должно быть между минимальным и максимальным`, 'error');
+                        }
+                    } else {
+                        initialInput.style.borderColor = '';
+                        minInput.style.borderColor = '';
+                        maxInput.style.borderColor = '';
+                    }
+                }
+            }
+
+            return isValid;
+        }
+
+        // Функция для проверки одного параметра
+        function validateSingleParameter(index) {
+            const initialInput = document.getElementById(`X${index}`);
+            const minInput = document.getElementById(`X${index}_min`);
+            const maxInput = document.getElementById(`X${index}_max`);
+
+            if (initialInput && minInput && maxInput && 
+                initialInput.value && minInput.value && maxInput.value) {
+                const initialValue = parseFloat(initialInput.value);
+                const minValue = parseFloat(minInput.value);
+                const maxValue = parseFloat(maxInput.value);
+
+                if (initialValue < minValue || initialValue > maxValue || minValue > maxValue) {
+                    initialInput.style.borderColor = '#e74c3c';
+                    minInput.style.borderColor = '#e74c3c';
+                    maxInput.style.borderColor = '#e74c3c';
+                } else {
+                    initialInput.style.borderColor = '';
+                    minInput.style.borderColor = '';
+                    maxInput.style.borderColor = '';
+                }
+            } else {
+                // Сбрасываем цвет, если одно из полей пустое
+                initialInput.style.borderColor = '';
+                minInput.style.borderColor = '';
+                if (maxInput) maxInput.style.borderColor = '';
+            }
+        }
+
+        // Добавляем обработчики событий для проверки при вводе
+        for (let i = 1; i <= 11; i++) {
+            const initialInput = document.getElementById(`X${i}`);
+            const minInput = document.getElementById(`X${i}_min`);
+            const maxInput = document.getElementById(`X${i}_max`);
+
+            if (initialInput && minInput && maxInput) {
+                // Проверка при изменении значений
+                [initialInput, minInput, maxInput].forEach(input => {
+                    input.addEventListener('input', function () {
+                        validateSingleParameter(i);
+                    });
+                    input.addEventListener('blur', function () {
+                        validateSingleParameter(i);
+                    });
+                });
+            }
+        }
+
+        // Очистка всех значений
+        document.getElementById('clearBtn').addEventListener('click', function () {
+            const inputs = document.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.value = '';
+                input.style.borderColor = '';
+            });
+            document.getElementById('diagramsContainer').style.display = 'none';
+
+            fetch('/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showMessage('Все значения очищены', 'success');
+                    }
+                })
+                .catch(error => {
+                    showMessage('Ошибка при очистке значений', 'error');
+                });
+        });
+
+        // Случайные значения
+        document.getElementById('randomBtn').addEventListener('click', function () {
+            fetch('/random', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        for (const [key, value] of Object.entries(data.parameters)) {
+                            const input = document.getElementById(key);
+                            if (input) {
+                                input.value = value;
+                                input.style.borderColor = '';
+                            }
+                        }
+                        showMessage('Значения заполнены случайными данными', 'success');
+                    }
+                })
+                .catch(error => {
+                    showMessage('Ошибка при генерации случайных значений', 'error');
+                });
+        });
+
+        // Построение диаграмм
+        document.getElementById('plotBtn').addEventListener('click', function () {
+            if (!validateParameterValues()) {
+                return; // Прерываем выполнение если есть ошибки
+            }
+
+            const formData = getFormData();
+            fetch('/plot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.getElementById('timeSeriesImg').src = 'data:image/png;base64,' + data.time_series;
+                        document.getElementById('timeSeriesDetailedImg').src = 'data:image/png;base64,' + data.time_series_detailed;
+                        document.getElementById('radarChartsImg').src = 'data:image/png;base64,' + data.radar_charts;
+                        document.getElementById('diagramsContainer').style.display = 'block';
+                        showMessage('Диаграммы успешно построены', 'success');
+                    } else {
+                        showMessage(data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showMessage('Ошибка при построении диаграмм', 'error');
+                });
+        });
+    </script>
+</body>
+
+</html>
